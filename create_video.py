@@ -8,8 +8,10 @@ import re
 import subprocess
 import sys
 import time
+import wave
 import asyncio
 import edge_tts
+from piper import PiperVoice
 from pathlib import Path
 from urllib.parse import quote
 
@@ -160,6 +162,7 @@ def main():
         sys.exit("Текст озвучки слишком короткий. Добавьте хотя бы 2–3 предложения.")
 
     voice_name = {"ru": "ru-RU-DmitryNeural", "en": "en-US-GuyNeural"}[args.voice]
+    piper_voice_name = {"ru": "ru_RU-denis-medium", "en": "en_US-joe-medium"}[args.voice]
 
     OUT.mkdir(exist_ok=True)
     WORK.mkdir(exist_ok=True)
@@ -178,7 +181,7 @@ def main():
     credits = [
         "Материалы изображений: Wikimedia Commons.",
         "Проверьте лицензии и условия повторного использования перед публикацией.",
-        f"Синтез речи: {voice_name} (Edge neural TTS).",
+        "Нейросетевая озвучка: Edge TTS с локальным резервным голосом Piper.",
         ""
     ]
     for i, ((src, item), caption) in enumerate(zip(downloaded, captions), start=1):
@@ -196,21 +199,30 @@ def main():
     (OUT / "credits.txt").write_text("\n".join(credits), encoding="utf-8")
 
     voice_path = WORK / "voice.mp3"
+    try:
+        async def synthesize_voice():
+            communicate = edge_tts.Communicate(
+                narration, voice_name, rate="+0%", volume="+0%", pitch="+0Hz"
+            )
+            await communicate.save(str(voice_path))
 
-    async def synthesize_voice():
-        communicate = edge_tts.Communicate(
-            narration, voice_name, rate="+0%", volume="+0%", pitch="+0Hz"
-        )
-        await communicate.save(str(voice_path))
-
-    asyncio.run(synthesize_voice())
-    duration_result = subprocess.run([
-        "ffprobe", "-v", "error",
-        "-show_entries", "format=duration",
-        "-of", "default=noprint_wrappers=1:nokey=1",
-        str(voice_path)
-    ], check=True, capture_output=True, text=True)
-    audio_seconds = float(duration_result.stdout.strip())
+        asyncio.run(synthesize_voice())
+        duration_result = subprocess.run([
+            "ffprobe", "-v", "error",
+            "-show_entries", "format=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            str(voice_path)
+        ], check=True, capture_output=True, text=True)
+        audio_seconds = float(duration_result.stdout.strip())
+        print(f"Using Edge neural voice: {voice_name}")
+    except Exception as exc:
+        print(f"Edge TTS unavailable ({exc}); using local neural voice: {piper_voice_name}")
+        voice_path = WORK / "voice.wav"
+        piper_voice = PiperVoice.load(f"{piper_voice_name}.onnx")
+        with wave.open(str(voice_path), "wb") as wf:
+            piper_voice.synthesize_wav(narration, wf)
+        with wave.open(str(voice_path), "rb") as wf:
+            audio_seconds = wf.getnframes() / float(wf.getframerate())
 
     total_seconds = max(audio_seconds + 0.8, 12.0)
     per_slide = total_seconds / len(slides)

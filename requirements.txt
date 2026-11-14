@@ -1,3 +1,4 @@
 requests>=2.31,<3
 Pillow>=10,<12
 edge-tts>=7.2,<8
+piper-tts>=1.2,<2
