@@ -8,7 +8,8 @@ import re
 import subprocess
 import sys
 import time
-import wave
+import asyncio
+import edge_tts
 from pathlib import Path
 from urllib.parse import quote
 
@@ -158,6 +159,8 @@ def main():
     if len(narration) < 40:
         sys.exit("Текст озвучки слишком короткий. Добавьте хотя бы 2–3 предложения.")
 
+    voice_name = {"ru": "ru-RU-DmitryNeural", "en": "en-US-GuyNeural"}[args.voice]
+
     OUT.mkdir(exist_ok=True)
     WORK.mkdir(exist_ok=True)
     size = (720, 1280) if args.orientation == "portrait" else (1280, 720)
@@ -175,7 +178,7 @@ def main():
     credits = [
         "Материалы изображений: Wikimedia Commons.",
         "Проверьте лицензии и условия повторного использования перед публикацией.",
-        "Видео создано автоматически; голос синтезирован eSpeak NG.",
+        f"Синтез речи: {voice_name} (Edge neural TTS).",
         ""
     ]
     for i, ((src, item), caption) in enumerate(zip(downloaded, captions), start=1):
@@ -192,13 +195,22 @@ def main():
     credits.append("Wikimedia Commons: https://commons.wikimedia.org/")
     (OUT / "credits.txt").write_text("\n".join(credits), encoding="utf-8")
 
-    voice_path = WORK / "voice.wav"
-    subprocess.run([
-        "espeak-ng", "-v", args.voice, "-s", "145",
-        "-w", str(voice_path), narration
-    ], check=True)
-    with wave.open(str(voice_path), "rb") as wf:
-        audio_seconds = wf.getnframes() / float(wf.getframerate())
+    voice_path = WORK / "voice.mp3"
+
+    async def synthesize_voice():
+        communicate = edge_tts.Communicate(
+            narration, voice_name, rate="+0%", volume="+0%", pitch="+0Hz"
+        )
+        await communicate.save(str(voice_path))
+
+    asyncio.run(synthesize_voice())
+    duration_result = subprocess.run([
+        "ffprobe", "-v", "error",
+        "-show_entries", "format=duration",
+        "-of", "default=noprint_wrappers=1:nokey=1",
+        str(voice_path)
+    ], check=True, capture_output=True, text=True)
+    audio_seconds = float(duration_result.stdout.strip())
 
     total_seconds = max(audio_seconds + 0.8, 12.0)
     per_slide = total_seconds / len(slides)

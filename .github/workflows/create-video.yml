@@ -42,7 +42,7 @@ jobs:
       - name: Install system tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ffmpeg espeak-ng fonts-dejavu-core
+          sudo apt-get install -y --no-install-recommends ffmpeg fonts-dejavu-core
 
       - name: Set up Python
         uses: actions/setup-python@v5
