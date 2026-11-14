@@ -1,1 +1,77 @@
+name: Create video
+
+on:
+  workflow_dispatch:
+    inputs:
+      topic:
+        description: "Тема видео"
+        required: true
+        type: string
+      narration:
+        description: "Текст озвучки (не менее 40 символов)"
+        required: true
+        type: string
+      orientation:
+        description: "Ориентация видео"
+        required: true
+        type: choice
+        options:
+          - portrait
+          - landscape
+        default: portrait
+      voice:
+        description: "Язык озвучки"
+        required: true
+        type: choice
+        options:
+          - ru
+          - en
+        default: ru
+
+permissions:
+  contents: read
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install system tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg espeak-ng fonts-dejavu-core
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Python dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Create video
+        env:
+          TOPIC: ${{ inputs.topic }}
+          NARRATION: ${{ inputs.narration }}
+          ORIENTATION: ${{ inputs.orientation }}
+          VOICE: ${{ inputs.voice }}
+        run: |
+          python create_video.py \
+            --topic "$TOPIC" \
+            --narration "$NARRATION" \
+            --orientation "$ORIENTATION" \
+            --voice "$VOICE"
+
+      - name: Save video artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: video-${{ github.run_number }}
+          path:
+            output/video.mp4
+            output/credits.txt
+          retention-days: 7
+          if-no-files-found: error
 
